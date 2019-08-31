@@ -1,0 +1,113 @@
+    // 
+    QImage dst;
+    cv::Mat temp;
+    camer->PrintBuildInfo();
+    FlyCapture2::BusManager busMgr;
+    FlyCapture2::PGRGuid guid;
+    busMgr.GetCameraFromIndex(0, &guid);
+    //init------------------------------
+    FlyCapture2::GigECamera cam;
+
+    cam.Connect(&guid);  //连接相机
+    // Get the camera information
+    //-------------------
+    GigEImageSettingsInfo imageSettingsInfo;
+    cam.GetGigEImageSettingsInfo(&imageSettingsInfo);
+    GigEImageSettings imageSettings;
+    imageSettings.offsetX = 0;
+    imageSettings.offsetY = 0;
+    imageSettings.height = imageSettingsInfo.maxHeight;
+    imageSettings.width = imageSettingsInfo.maxWidth;
+    imageSettings.pixelFormat = PIXEL_FORMAT_RGB;
+    cam.SetGigEImageSettings(&imageSettings);
+    //-------------------
+    FlyCapture2::FC2Config config;
+    cam.GetConfiguration(&config);  //获取配置
+    // Set the number of driver buffers used to 10.
+    config.numBuffers = 30;
+    // Set the camera configuration
+    cam.SetConfiguration(&config);  //设置配置
+    // Start capturing images
+    cam.StartCapture();  //开始采集
+    FlyCapture2::Image rawImage;
+    //     Image convertedImage;
+
+    while(flag==false)
+    {
+          cam.RetrieveBuffer(&rawImage);  //抓图
+          //  rawImage.Convert(PIXEL_FORMAT_RGBU, &convertedImage);
+          unsigned int rows,cols,bits;
+          unsigned char *data;
+          rows=rawImage.GetRows();
+          cols=rawImage.GetCols();
+          bits=rawImage.GetBitsPerPixel();
+          data=rawImage.GetData();
+          cv::Mat src(rows,cols,CV_8UC3,data);
+          std::vector<cv::Mat> channels;
+          split(src, channels);
+          temp=channels[0];
+          channels[0]=channels[2];
+          channels[2]=temp;
+          cv::merge(channels,src);
+          cv::resize(src,src,cv::Size(360,360));
+          dst=cvMatToQImage(src);
+          emit cameradata(dst);
+          cv::waitKey(20);
+          if(flag==true)
+          {
+                // Stop capturing images
+                cam.StopCapture(); //结束采集
+                // Disconnect the camera
+                cam.Disconnect();  //断开连接
+                break;
+          }
+    }
+    }
+    
+    QImage MyCaptureClass::cvMatToQImage(const cv::Mat &mat)
+    {
+          const unsigned char* data = mat.data;
+          int width = mat.cols;
+          int height = mat.rows;
+          int bytesPerLine = static_cast<int>(mat.step);
+          switch (mat.type())
+          {
+                // 8bit, ARGB
+                case CV_8UC4:
+                {
+                    QImage image(data, width, height, bytesPerLine,
+                                 QImage::Format_ARGB32);
+                    qDebug()<<"CV_8UC4";
+                    return image;
+                }
+                // 8bit, BGR
+                case CV_8UC3:
+                {
+                    QImage image(data, width, height, bytesPerLine,
+                                 QImage::Format_RGB888);
+                    //swap blue and red channel
+                    qDebug()<<"CV_8UC3";
+                    return image.rgbSwapped();
+                }
+                // 8bit, Grayshale
+                case CV_8UC1:
+                {
+                    QImage image(data, width, height, bytesPerLine,
+                                 QImage::Format_Grayscale8);
+                    qDebug()<<"CV_8UC1";
+                    return image;
+                }
+                default:
+                {
+                    // Unsupported format
+                    qDebug() << "Unsupported cv::Mat tpye: " << mat.type()
+                               << ", Empty QImage will be returned!";
+                    return QImage();
+                }
+          }
+    }
+    
+    void MyCaptureClass::setflag(bool f)
+    {
+         flag=f;
+    }
